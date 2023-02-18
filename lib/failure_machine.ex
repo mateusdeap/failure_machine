@@ -30,14 +30,8 @@ defmodule FailureMachine do
   end
 
   def process_command(info: path_string) do
-    file_read_results =
-      Path.wildcard(path_string)
-      |> Enum.map(&File.read/1)
-      |> Enum.group_by(fn file_read_result -> elem(file_read_result, 0) end)
-
-    file_read_results[:ok]
-    |> Enum.map(fn file_read_result -> elem(file_read_result, 1) end)
-    |> Enum.map(fn file_contents -> Poison.decode!(file_contents) end)
+    read_files(path_string)
+    |> decode_files()
     |> Enum.map(fn decoded_data -> extract_failures(decoded_data) end)
     |> List.flatten()
     |> classify()
@@ -46,6 +40,18 @@ defmodule FailureMachine do
 
   def process_command(help: _) do
     IO.puts(IO.ANSI.red() <> "TODO: Add help output" <> IO.ANSI.reset())
+  end
+
+  def read_files(path) do
+    Path.wildcard(path)
+    |> Enum.map(&File.read/1)
+    |> Enum.group_by(fn file_read_result -> elem(file_read_result, 0) end)
+  end
+
+  def decode_files(file_read_results) do
+    file_read_results[:ok]
+    |> Enum.map(fn file_read_result -> elem(file_read_result, 1) end)
+    |> Enum.map(fn file_contents -> Poison.decode!(file_contents) end)
   end
 
   def extract_failures(test_run_data) do
@@ -69,18 +75,13 @@ defmodule FailureMachine do
 
   def create_failure_groups(failures) do
     failures
-    |> Enum.group_by(fn failure -> root_cause(failure) end)
+    |> group_by_similarity()
     |> FailureGroup.from_failures_map()
   end
 
-  def root_cause(failure) do
-    cond do
-      failure.exception == nil ->
-        failure.message
-
-      failure.exception != nil ->
-        failure.exception["message"]
-    end
+  def group_by_similarity(failures) do
+    failures
+    |> Enum.reduce(%{}, fn failure, accumulator -> Failure.sort_into(accumulator, failure) end)
   end
 
   def order_descending(failure_groups) do
@@ -106,6 +107,6 @@ defmodule FailureMachine do
 
   def format(file_paths) do
     file_paths
-    |> Enum.reduce(List.first(file_paths), fn path, acc -> acc <> "\n#{path}" end)
+    |> Enum.reduce("", fn path, acc -> acc <> "\n#{path}" end)
   end
 end

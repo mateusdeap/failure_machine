@@ -3,16 +3,18 @@ defmodule FailureGroup do
 
   def from_failures_map(failures_map) do
     failures_map
-    |> Enum.map(fn {message, failures} -> from_failures(message, failures) end)
+    |> Enum.map(fn {_, failures} -> from_failures(failures) end)
   end
 
-  def from_failures(message, failures) do
-    failure_group = %FailureGroup{messages: message, number_of_failures: length(failures)}
+  def from_failures(failures) do
+    messages = Enum.map(failures, fn failure -> failure.exception["message"] end)
+    where = Enum.map(failures, fn failure -> "#{failure.file_path}:#{failure.line_number}" end)
 
-    failures
-    |> Enum.reduce(failure_group, fn failure, failure_group ->
-      add_failure(failure, failure_group)
-    end)
+    %FailureGroup{
+      messages: messages,
+      where: where,
+      number_of_failures: length(failures)
+    }
   end
 
   def add_failure(failure, failure_group) do
